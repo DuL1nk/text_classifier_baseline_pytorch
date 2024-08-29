@@ -39,10 +39,10 @@ class DataManager(object):
         """
         print('loading GPU config ...')
         if self.config.mode == 'train' and torch.cuda.device_count() > 1:
-            torch.distributed.init_process_group(backend='nccl', 
-                                                 init_method=self.config.init_method,
-                                                 rank=0, 
-                                                 world_size=self.config.world_size)
+            torch.distributed.init_process_group(backend='nccl', )
+                                                #  init_method=self.config.init_method,
+                                                #  rank=-1, 
+                                                #  world_size=-1)
             torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
     
     
@@ -92,11 +92,11 @@ class DataManager(object):
         获取数据集
         """
         file = '{}.txt'.format(data_type)
-        dataloader = self.data_process(file)
+        dataloader = self.data_process(file, data_type)
         return dataloader
 
 
-    def data_process(self, file_name):
+    def data_process(self, file_name, data_type='train'):
         """
         数据转换
         """
@@ -113,9 +113,10 @@ class DataManager(object):
         tokenized_datasets = tokenized_datasets.remove_columns(["src"])                        # 移除不需要的字段
         tokenized_datasets.set_format("torch", columns=["input_ids","attention_mask","label"])   
         # 转换成DataLoader类
-        sampler = RandomSampler(tokenized_datasets) if not torch.cuda.device_count() > 1 else DistributedSampler(tokenized_datasets)
+        sampler = DistributedSampler(tokenized_datasets) if (torch.cuda.device_count() > 1 and data_type == 'train') else RandomSampler(tokenized_datasets) 
         dataloader = DataLoader(tokenized_datasets, sampler=sampler, batch_size=self.config.batch_size)     #, collate_fn=data_collator
-
+        print(f'length of data loader: {len(dataloader)}')
+        # print(torch.distributed.get_rank())
         return dataloader
 
 

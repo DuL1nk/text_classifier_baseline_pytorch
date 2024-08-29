@@ -23,12 +23,12 @@ class Config(object):
     # 基础模型：FastText/TextCNN/TextRNN/TextRCNN/Transformer
     # 语言模型：Bert/Albert/Roberta/Distilbert/Electra/XLNet
     model_name='Bert'                                      
-    initial_pretrain_model = 'bert-base-chinese'           # 加载的预训练分词器checkpoint
-    initial_pretrain_tokenizer = 'bert-base-chinese'       # 加载的预训练模型checkpoint
+    initial_pretrain_model = '/mnt/public/usr/qianyicheng/codebase/models/hf_models/bert-base-chinese'           # 加载的预训练分词器checkpoint
+    initial_pretrain_tokenizer = '/mnt/public/usr/qianyicheng/codebase/models/hf_models/bert-base-chinese'       # 加载的预训练模型checkpoint
     lm_model_list = ['Bert','Albert','Roberta','Distilbert','Electra','XLNet']
     
     # 训练配置
-    num_epochs = 30                                             # 迭代次数
+    num_epochs = 1                                             # 迭代次数
     batch_size = 128                                            # 每个批次的大小
     learning_rate = 2e-5                                        # 学习率
     num_warmup_steps = 0.1                                      # warm up步数

@@ -12,11 +12,12 @@ import torch
 import torch.nn as nn
 from apex import amp
 from tqdm.auto import tqdm
-from datasets import Dataset, load_dataset, load_metric
+# from datasets import Dataset, load_dataset, load_metric
 from torch.utils.data import DataLoader
 from transformers import AdamW, AutoModelForSequenceClassification, get_scheduler, get_linear_schedule_with_warmup
 from transformers import BertTokenizer, BertConfig, AutoConfig
 # from model.BertForMaskedLM import BertForMaskedLM
+import torch.distributed as dist
 
 
 import torch.nn.functional as F
@@ -26,15 +27,26 @@ from utils.progressbar import ProgressBar
 from module.optimal.adversarial import FGM,PGD
 from module.ModelMap import map_model, map_config, map_tokenizer
 from module.LossManager import LossManager
-
+torch.autograd.set_detect_anomaly(True)
 
 
 class Trainer(object):
     
     def __init__(self, config, train_loader, valid_loader, test_loader):
         self.config = config
+        self.distributed = True if torch.cuda.device_count() > 1 else False
         # 设置GPU环境
-        self.device = torch.device(self.config.device)
+        if self.distributed:
+            import argparse
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--local_rank", default=-1)
+            FLAGS = parser.parse_args()
+            local_rank = FLAGS.local_rank
+            print(local_rank)
+            self.device = torch.device('cuda', int(local_rank))
+        else:
+            self.device = torch.device(self.config.device)
+        print(self.device)
         # 加载数据集
         self.train_loader = train_loader
         self.valid_loader = valid_loader
@@ -167,8 +179,8 @@ class Trainer(object):
         if self.config.fp16:
             self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level=self.config.fp16_opt_level)
         # 分布式训练
-        if torch.cuda.device_count() > 1:
-            self.model = torch.nn.parallel.DistributedDataParallel(self.model, find_unused_parameters=True)
+        if self.distributed:
+            self.model = torch.nn.parallel.DistributedDataParallel(self.model, find_unused_parameters=True, broadcast_buffers=False)
         # 对抗训练
         if self.config.adv_option == 'FGM':
             self.fgm = FGM(self.model, emb_name=self.config.adv_name, epsilon=self.config.adv_epsilon)
@@ -195,6 +207,8 @@ class Trainer(object):
         step_current = 0
         f1_best = 0
         for epoch in range(self.config.num_epochs):
+            if self.distributed and self.config.mode == 'train':
+                self.train_loader.sampler.set_epoch(epoch)
             progress_bar = ProgressBar(n_total=len(self.train_loader), desc='Training epoch:{0}'.format(epoch))
             for i, batch in enumerate(self.train_loader):
                 # 模型推断及计算损失
@@ -205,12 +219,15 @@ class Trainer(object):
                 step_current += 1
                 # 模型保存
                 if step_current%self.config.step_save==0 and step_current>0:
+                    if self.distributed and dist.get_rank() != 0: continue
                     # 模型评估
                     f1_eval = self.evaluate(self.valid_loader)
                     # 模型保存
                     f1_best = self.save_checkpoint(step_current, f1_eval, f1_best)
             print('\nEpoch:{}  Iter:{}/{}  loss:{:.4f}\n'.format(epoch, step_current, step_total, loss.item()))
-        self.evaluate(self.test_loader, print_table=True)
+
+        if not self.distributed or (self.distributed and dist.get_rank() == 0): 
+            self.evaluate(self.test_loader, print_table=True)
     
     
 

@@ -48,3 +48,5 @@ if __name__ == '__main__':
         print("no task going on!")
         print("you can use one of the following lists to replace the valible of Config.py. ['train', 'test', 'valid'] !")
         
+    end_time = time.time()
+    print(f'***** Processing costs {end_time - start_time}s *****')
